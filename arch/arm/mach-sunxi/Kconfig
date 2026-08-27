@@ -348,11 +348,14 @@ config MACH_SUNXI_H3_H5
 	select SUNXI_GEN_SUN6I
 	select SUPPORT_SPL
 
-# TODO: try out A80's 8GiB DRAM space
 config SUNXI_DRAM_MAX_SIZE
 	hex
 	default 0x100000000 if MACH_SUN50I_H616 || MACH_SUN50I_A133 || MACH_SUN55I_A523
 	default 0xC0000000 if MACH_SUN50I || MACH_SUN50I_H5 || MACH_SUN50I_H6
+	# sun9i DRAM is based at 0x20000000, so 0x100000000 - 0x20000000 is
+	# all that can be described with 32-bit phys addresses.  Boards with
+	# 4 GiB fitted (Tronsmart Draco AW80 Telos) get 3.5 GiB of it.
+	default 0xE0000000 if MACH_SUN9I
 	default 0x80000000
 
 choice

@@ -869,10 +869,18 @@ unsigned long sunxi_dram_init(void)
 		.dram_type = DRAM_TYPE_DDR3,
 		.bus_width = 32,
 		.chan = 2,
-		.rank = 1,
-		/* .rank = 2, */
+		/*
+		 * 4 GiB board.  rows=16/rank=1 also computes to 4 GiB but fails
+		 * DRAM training outright (DRAM: 0 MiB), verified against a
+		 * known-good rows=15 control over FEL.
+		 *
+		 * 4 Gbit x16 parts fit rank=2/rows=15: 512 MiB each, 8 banks ->
+		 * 64 MiB/bank, 1024 cols x 2 B = 2048 B/row -> 2^15 rows.  Two
+		 * parts per 32-bit channel per rank, two ranks -> 2 GiB per
+		 * channel, 4 GiB total, page size 1024*32/8 = 4096.
+		 */
+		.rank = 2,  /* 4 GiB via two ranks, not 16 rows */
 		.page_size = 4096,
-		/* .rows = 16, */
 		.rows = 15,
 
 		/* CL/CWL table for the speed bin */
@@ -882,8 +890,19 @@ unsigned long sunxi_dram_init(void)
 
 		/* timings */
 		.tREFI = 7800,	/* 7.8us (up to 85 degC) */
-		.tRFC  = 260,	/* 260ns for 4GBit devices */
-				/* 350ns @ 8GBit */
+		/*
+		 * 350 ns, i.e. the 8 Gbit figure.
+		 *
+		 * With rows=16 and a 4096-byte page, both device widths fit the
+		 * geometry: x8 parts would be 4 Gbit (260 ns), x16 parts 8 Gbit
+		 * (350 ns).  At 260 ns this board passes every spot check -
+		 * no aliasing across A20..A31, distinct cells 2 GiB apart - but
+		 * dies under a sustained 1200 MiB write, while the stock 2 GiB
+		 * config passes the same test.  Too-short refresh looks exactly
+		 * like that.  Over-refreshing costs a little bandwidth and is
+		 * always safe, so prefer the conservative value.
+		 */
+		.tRFC  = 260,	/* 4 Gbit parts under rank=2/rows=15 */
 
 		.tRCD  = 13750,
 		.tRP   = 13750,
@@ -953,6 +972,26 @@ unsigned long sunxi_dram_init(void)
 
 	mctl_com_init(&para);
 
-	/* return the proper RAM size */
-	return DRAMC_get_dram_size() << 20;
+	/*
+	 * Cap the reported size so it can actually be represented.
+	 *
+	 * sun9i DRAM starts at 0x20000000 and sunxi_dram_init() returns an
+	 * unsigned long, which is 32-bit here (CONFIG_PHYS_64BIT is off).
+	 * The most that fits below the 4 GiB boundary is
+	 * 0x100000000 - 0x20000000 = 3584 MiB.
+	 *
+	 * A 4 GiB part computes 4096 MiB, and 4096 << 20 is exactly 2^32,
+	 * which wraps to 0 - producing the "DRAM: 0 MiB" plus
+	 * "### ERROR ### Please RESET the board ###" seen on this board with
+	 * both rows=16/rank=1 and rows=15/rank=2.  The DRAM trains fine; only
+	 * the arithmetic overflows.
+	 */
+	{
+		unsigned int size_mb = DRAMC_get_dram_size();
+
+		if (size_mb > 3584)
+			size_mb = 3584;
+
+		return (unsigned long)size_mb << 20;
+	}
 }
