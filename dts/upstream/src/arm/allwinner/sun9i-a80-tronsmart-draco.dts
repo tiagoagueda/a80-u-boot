@@ -1,0 +1,508 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Tronsmart Draco AW80 Telos - Allwinner A80 (sun9i) TV box
+ *   4 GB DDR3, 32 GB Samsung eMMC 5.0 on mmc2
+ *   AXP806-equivalent PMIC ("AXP808") in MASTER mode on RSB
+ *   Realtek RTL8211E gigabit PHY, AMPAK AP6335 (BCM4339) WiFi/BT on mmc1
+ *
+ * DRAFT - derived from sun9i-a80-cubieboard4.dts and from data read off the
+ * running vendor system. GPIO assignments are NOT yet known; anything needing a
+ * board GPIO is deliberately left out until schematics or sys_config.fex are
+ * available. First goal is a serial console and eMMC.
+ */
+
+/*
+ * NOTE: voltage constraints are deliberately omitted from the AXP806 rails.
+ *
+ * With explicit min/max present, the regulator core read every rail as 0.7 V
+ * and rewrote it:
+ *     vcc-pg-pm:   Bringing 700000uV into 1800000-1800000uV
+ *     vcc-pa:      Bringing 700000uV into 2500000-2500000uV
+ *     vcc-io-wifi: voltage operation not allowed
+ * The live vendor system shows those rails already at 1800 and 2500 mV, so
+ * mainline is misreading them - the AXP808 may not be register-identical to
+ * the AXP806 after all.  Rewriting live rails with wrong values would brown
+ * the board out, which matches the non-deterministic boot failures.
+ *
+ * Leaving the constraints out keeps the bootloader values.
+ */
+/dts-v1/;
+#include "sun9i-a80.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+	model = "Tronsmart Draco AW80 Telos";
+	compatible = "tronsmart,draco-aw80", "allwinner,sun9i-a80";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led-0 {
+			label = "draco:red:led1";
+			gpios = <&pio 7 6 GPIO_ACTIVE_HIGH>;   /* PH6 */
+			linux,default-trigger = "heartbeat";
+		};
+
+		led-1 {
+			label = "draco:green:led2";
+			gpios = <&pio 7 17 GPIO_ACTIVE_HIGH>;  /* PH17 */
+		};
+	};
+
+	/*
+	 * [usbc1] usb_drv_vbus_gpio = port:PH14.  MUST stay active-high: driving
+	 * PH14/PH15 low kills VBUS on the blue USB3 socket too, so these pins gate
+	 * a shared 5V USB rail rather than one socket each.  Verified 2026-08-26.
+	 */
+	reg_usb1_vbus: usb1-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb1-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&pio 7 14 GPIO_ACTIVE_HIGH>;       /* PH14 */
+	};
+
+	/* [usbc2] usb_drv_vbus_gpio = port:PH15 -> usbphy3 / ehci2 */
+	reg_usb2_vbus: usb2-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb2-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&pio 7 15 GPIO_ACTIVE_HIGH>;       /* PH15 */
+	};
+
+	/*
+	 * AMPAK AP6335 (BCM4339).  [wifi_para] ap6xxx_wl_regon = port:PL02.
+	 * TODO: the module also wants a 32.768 kHz LPO, which on the dev boards
+	 * comes from the AC100 (clocks = <&ac100_rtc 1>).  No AC100 node here yet,
+	 * so WiFi may not associate until that is added.
+	 */
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		clocks = <&ac100_rtc 1>;
+		clock-names = "ext_clock";
+		reset-gpios = <&r_pio 0 2 GPIO_ACTIVE_LOW>; /* PL2 WL-REG-ON */
+	};
+};
+
+/* [mmc0_para] SD card slot: 4-bit on PF0-PF5, card detect on PH18 */
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins>, <&mmc0_cd_pin>;
+	vmmc-supply = <&reg_dcdce>;
+	bus-width = <4>;
+	/*
+	 * Card detect is PH18 and the vendor configures it with a pull-up
+	 * (sys_config.fex: sdc_det = port:PH18<6><1><2><default>).  Our tree
+	 * set no bias at all, so the line floated LOW and the driver believed
+	 * a card was permanently inserted - measured: slot empty reads 0 with
+	 * the pull off and 1 with it on.  mmc0_cd_pin below fixes that.
+	 *
+	 * With the pull-up enabled the line still does not go low when a card
+	 * is inserted, so the detect switch itself is not reaching PH18 on
+	 * this board.  broken-cd makes the driver poll instead, which does not
+	 * depend on that switch.  cd-gpios is deliberately dropped - it and
+	 * broken-cd are mutually exclusive.
+	 */
+	broken-cd;
+	/*
+	 * Cap the bus clock.  Left uncapped this controller enumerates a card
+	 * and then fails every transfer:
+	 *     sunxi-mmc 1c0f000.mmc: data error, sending stop command
+	 *     sunxi-mmc 1c0f000.mmc: send stop command failed
+	 * so no partition table is readable and the boot ROM cannot load an
+	 * SPL from the card.  mmc2 (eMMC) needed exactly the same treatment.
+	 */
+	max-frequency = <25000000>;
+	status = "okay";
+};
+
+/* [mmc1_para] SDIO WiFi: 4-bit on PG0-PG5, sdc_isio = 1 */
+&mmc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc1_pins>;
+	mmc-pwrseq = <&wifi_pwrseq>;
+	vmmc-supply = <&reg_cldo3>;
+	vqmmc-supply = <&reg_aldo2>;
+	bus-width = <4>;
+	non-removable;
+	/* start slow while the clk-update timeout is being chased */
+	max-frequency = <25000000>;
+	/*
+	 * DISABLED.  Still throws
+	 *     sunxi-mmc 1c10000.mmc: fatal err update clk timeout
+	 * and eventually stops the system, even with the AC100 LPO clock now
+	 * present.  The AC100 did help - wifi-pwrseq probes cleanly and root
+	 * now mounts with this controller enabled - but the controller itself
+	 * is still broken.  See 17-mmc1-investigation.md.
+	 */
+	status = "disabled";
+};
+
+&mmc1_pins {
+	bias-pull-up;
+};
+
+&usbphy1 {
+	/* [usbc1] host, VBUS on PH14 */
+	phy-supply = <&reg_usb1_vbus>;
+	status = "okay";
+};
+
+&usbphy2 {
+	/*
+	 * HSIC PHY (supplied by BLDO4, vcc12-hsic).  sys_config.fex lists only
+	 * usbc0/usbc1/usbc2, and the vendor kernel brings up exactly two EHCI
+	 * and two OHCI controllers - so there is no third USB2 host port here.
+	 */
+	status = "disabled";
+};
+&usbphy3 {
+	/* [usbc2] host, VBUS on PH15 */
+	phy-supply = <&reg_usb2_vbus>;
+	status = "okay";
+};
+
+&ehci0 {
+	status = "okay";
+};
+
+&ehci1 {
+	/* HSIC controller - no HSIC device fitted on this board */
+	status = "disabled";
+};
+
+&ehci2 {
+	status = "okay";
+};
+
+&ohci0 {
+	status = "okay";
+};
+
+&ohci2 {
+	status = "okay";
+};
+&osc32k {
+	/* osc32k input is from the AC100 */
+	clocks = <&ac100_rtc 0>;
+};
+
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_ph_pins>;
+	status = "okay";
+};
+
+/* 32 GB Samsung BWBC3R eMMC 5.0. Vendor BSP runs it 4-bit; try 8-bit. */
+&mmc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc2_8bit_pins>;
+	vmmc-supply = <&reg_dcdce>;
+	vqmmc-supply = <&reg_dcdce>;
+	/*
+	 * Enumerates as high speed DDR then throws
+	 *   data error, sending stop command / send stop command failed
+	 * Cap the clock while that is investigated.
+	 */
+	max-frequency = <25000000>;
+	bus-width = <8>;
+	non-removable;
+	cap-mmc-hw-reset;
+	status = "okay";
+};
+
+&mmc2_8bit_pins {
+	/* Increase drive strength for DDR modes */
+	drive-strength = <40>;
+};
+
+&gmac {
+	pinctrl-names = "default";
+	pinctrl-0 = <&gmac_rgmii_pins>;
+	/* DIAGNOSTIC: no phy-handle - let stmmac scan all 32 MDIO addresses */
+	/*
+	 * phylink rejects rgmii-id on this MAC:
+	 *   validation of rgmii-id with support ...00006280 failed: -EINVAL
+	 *   cannot attach to PHY (error: -EINVAL)
+	 * Plain rgmii is accepted.
+	 */
+	phy-mode = "rgmii-id";
+	phy-supply = <&reg_cldo1>;
+	/*
+	 * Force the MDIO clock divider.  bus-gmac runs at 240 MHz and stmmac
+	 * picks the CSR range from it; the default lands on div 42, giving
+	 * MDC = 240/42 = 5.7 MHz.  The MDIO spec caps MDC at 2.5 MHz, so no
+	 * PHY answers - which is what "no phy found" with all-zero reads on a
+	 * full 32-address scan looks like.
+	 *
+	 * clk_csr = 4 selects the 150-250 MHz range, div 102:
+	 *   240 MHz / 102 = 2.35 MHz  (in spec)
+	 */
+	snps,clk-csr = <4>;
+	status = "okay";
+
+	/*
+	 * MDIO never finds the PHY on this board: the bus is electrically
+	 * healthy (all reads 0xffff, zero timeouts, verified by direct
+	 * register access) but the RTL8211E does not answer.  It is clearly
+	 * alive though - the link LEDs negotiate with the switch unaided.
+	 *
+	 * fixed-link tells the MAC to assume a 1 Gbit full-duplex link and
+	 * skip PHY discovery entirely, which is exactly the situation this
+	 * binding exists for.
+	 */
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+	};
+};
+
+&mdio {
+	/* DIAGNOSTIC: no PHY declared - forcing a full bus scan */
+};
+
+&pio {
+	vcc-pa-supply = <&reg_aldo3>;
+	vcc-pb-supply = <&reg_dcdce>;
+	vcc-pc-supply = <&reg_dcdce>;
+	vcc-pd-supply = <&reg_dcdce>;
+	vcc-pe-supply = <&reg_dcdce>;
+	vcc-pf-supply = <&reg_dcdce>;
+	vcc-pg-supply = <&reg_aldo2>;
+	vcc-ph-supply = <&reg_dcdce>;
+	/*
+	 * SD card detect.  The vendor configures this pin with a pull-up
+	 * (sdc_det = port:PH18<6><1><2><default>); our tree set no bias, so
+	 * the line floated LOW and the driver saw a card permanently present.
+	 */
+	mmc0_cd_pin: mmc0-cd-pin {
+		pins = "PH18";
+		function = "gpio_in";
+		bias-pull-up;
+	};
+
+};
+
+&r_pio {
+	vcc-pl-supply = <&reg_cldo1>;
+	vcc-pm-supply = <&reg_aldo2>;
+};
+
+&r_rsb {
+	status = "okay";
+
+	/*
+	 * The board is fitted with a part branded AXP808. Every rail it
+	 * exposes matches the AXP806 exactly, including the distinctive
+	 * 0.7-4.2 V CLDO2, and mainline axp20x performs no chip-ID check -
+	 * the variant comes from the compatible alone. Unlike the A80 dev
+	 * boards, there is no AXP809 here and this part runs standalone,
+	 * hence x-powers,master-mode.
+	 */
+	/*
+	 * X-Powers AC100 audio codec + RTC (confirmed on the board teardown).
+	 * Its RTC block provides the 32.768 kHz clocks: output 0 feeds osc32k,
+	 * output 1 is the LPO the AP6335 WiFi module needs.  Without it the
+	 * module has no reference clock and may never respond, which is the
+	 * leading theory for mmc1 wedging the bus.
+	 */
+	ac100: codec@e89 {
+		compatible = "x-powers,ac100";
+		reg = <0xe89>;
+
+		ac100_codec: codec {
+			compatible = "x-powers,ac100-codec";
+			interrupt-parent = <&r_pio>;
+			interrupts = <0 9 IRQ_TYPE_LEVEL_LOW>; /* PL9 */
+			#clock-cells = <0>;
+			clock-output-names = "4M_adda";
+		};
+
+		ac100_rtc: rtc {
+			compatible = "x-powers,ac100-rtc";
+			interrupt-parent = <&nmi_intc>;
+			interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+			clocks = <&ac100_codec>;
+			#clock-cells = <1>;
+			clock-output-names = "cko1_rtc",
+					     "cko2_rtc",
+					     "cko3_rtc";
+		};
+	};
+
+	axp806: pmic@745 {
+		compatible = "x-powers,axp806";
+		reg = <0x745>;
+		interrupt-parent = <&nmi_intc>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		x-powers,master-mode;
+
+		regulators {
+			/* observed 840 mV, range 600-1520; cubieboard4 calls DCDCA vdd-cpub */
+			reg_dcdca: dcdca {
+				regulator-always-on;
+				regulator-name = "vdd-cpus";
+			};
+
+			/* observed 1500 mV - DDR3 supply */
+			reg_dcdcb: dcdcb {
+				regulator-always-on;
+				regulator-name = "vcc-dram";
+			};
+
+			/* observed 900-1000 mV, CPU-class range. Consumer UNVERIFIED. */
+			reg_dcdcc: dcdcc {
+				regulator-always-on;
+				regulator-name = "vdd-cpus-or-gpu";
+			};
+
+			/* observed 900 mV; cubieboard4 calls DCDCD vdd-vpu */
+			reg_dcdcd: dcdcd {
+				regulator-always-on;
+				regulator-name = "vdd-vpu";
+			};
+
+			/*
+			 * Main 3.3 V I/O rail.  Vendor gpio bias map puts PB, PC,
+			 * PD, PE, PF and PH on this at 3300 mV.  PC is the eMMC
+			 * and PF the SD slot, so this is also their vmmc/vqmmc.
+			 */
+			reg_dcdce: dcdce {
+				regulator-always-on;
+				regulator-name = "vcc-io-3v3";
+			};
+
+			reg_aldo1: aldo1 {
+				regulator-always-on;
+				regulator-name = "avcc";
+			};
+
+			/*
+			 * PG and PM pin bias, 1.8 V (vendor gpio bias map, and
+			 * the vendor boot log shows aldo2 at 1800 mV).  PG is the
+			 * mmc1/SDIO bank, so a 700 mV floor here is a candidate
+			 * cause of the mmc1 clock-update timeout as well.
+			 */
+			reg_aldo2: aldo2 {
+				regulator-always-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-pg-pm";
+			};
+
+			/*
+			 * PA pin bank bias.  Every GMAC pin lives here and RGMII
+			 * is 2.5 V signalling; the vendor runs aldo3 at 2500 mV.
+			 * With no constraints this floored at 700 mV, which held
+			 * MDC (PA16) and MDIO (PA17) low even against an internal
+			 * pull-up - measured - so no PHY could ever answer.
+			 */
+			reg_aldo3: aldo3 {
+				regulator-always-on;
+				regulator-min-microvolt = <2500000>;
+				regulator-max-microvolt = <2500000>;
+				regulator-name = "vcc-pa";
+			};
+
+			reg_bldo1: bldo1 {
+				regulator-always-on;
+				regulator-name = "vcc18-efuse-adc-display";
+			};
+
+			reg_bldo2: bldo2 {
+				regulator-always-on;
+				regulator-name = "vdd09-drampll";
+			};
+
+			/*
+			 * Vendor boot log shows bldo3 at 1200 mV.  Consumer not
+			 * positively identified - candidate PHY core supply.
+			 */
+			reg_bldo3: bldo3 {
+				regulator-always-on;
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+				regulator-name = "vcc12-bldo3";
+			};
+
+			/*
+			 * Named vcc12-hsic after the Optimus, but no HSIC device
+			 * is fitted here.  Vendor boot log: bldo4 at 1100 mV.
+			 * Enabled at the vendor value while hunting the PHY.
+			 */
+			reg_bldo4: bldo4 {
+				regulator-always-on;
+				regulator-min-microvolt = <1100000>;
+				regulator-max-microvolt = <1100000>;
+				regulator-name = "vcc12-hsic";
+			};
+
+			/* vendor boot log: cldo1 at 3300 mV */
+			reg_cldo1: cldo1 {
+				regulator-always-on;
+				regulator-enable-ramp-delay = <100000>;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-gmac-phy";
+			};
+
+			/* Vendor boot log shows cldo2 at 1900 mV. */
+			reg_cldo2: cldo2 {
+				regulator-always-on;
+				regulator-min-microvolt = <1900000>;
+				regulator-max-microvolt = <1900000>;
+				regulator-name = "vcc19-cldo2";
+			};
+
+			/*
+			 * WiFi module supply (vendor: wifi_power_ext1 =
+			 * axp15_cldo3, running at 1900 mV).  Must stay enabled -
+			 * with it off, mmc1 throws
+			 *   sunxi-mmc 1c10000.mmc: fatal err update clk timeout
+			 * which killed the whole boot.
+			 */
+			reg_cldo3: cldo3 {
+				regulator-always-on;
+				regulator-min-microvolt = <1900000>;
+				regulator-max-microvolt = <1900000>;
+				regulator-name = "vcc-io-wifi";
+			};
+
+			reg_sw: sw {
+				regulator-always-on;
+				regulator-name = "vcc-sw";
+				/* last rail still off; load unidentified */
+			};
+		};
+	};
+};
+
+/*
+ * OPP tables and cpu-supply are DISABLED for now.
+ *
+ * cpufreq-dt walks every CPU and aborts entirely if any lacks an OPP node:
+ *     of: /cpus/cpu@100: Couldn t find opp node
+ *     cpu cpu1: error -EBUSY: failed to set regulators
+ *     cpufreq-dt: probe failed with error -16
+ * We can only supply the A7 cluster (AXP806 DCDCA); the A15 runs off an
+ * external OZ8012x with no mainline driver, so a partial table is not
+ * acceptable to cpufreq-dt.  See 10-cpufreq-implementation.md.
+ *
+ * The failed probe also lands milliseconds before the console dies, so it is
+ * removed here to take it out of the picture.
+ */
