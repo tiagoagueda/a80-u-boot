@@ -571,9 +571,50 @@ static void status_led_init(void)
 #endif
 }
 
+#ifdef CONFIG_SPL_SUNXI_EARLY_WATCHDOG
+/*
+ * Arm a watchdog before anything else SPL does.
+ *
+ * The register sequence is the sun6i one from drivers/watchdog/sunxi_wdt.c,
+ * open-coded because there is no driver model in SPL here. U-Boot proper
+ * adopts the same instance through the WDT uclass a couple of seconds later,
+ * and Linux stops it in sunxi_wdt_probe(), so the handoff needs nothing.
+ */
+#define SUNXI_SPL_WDT_CTRL		0x10
+#define SUNXI_SPL_WDT_CFG		0x14
+#define SUNXI_SPL_WDT_MODE		0x18
+#define SUNXI_SPL_WDT_CTRL_RELOAD	((1 << 0) | (0x0a57 << 1))
+#define SUNXI_SPL_WDT_MODE_EN		BIT(0)
+#define SUNXI_SPL_WDT_TIMEOUT_16S	0xb	/* wdt_timeout_map[16] */
+
+static void sunxi_spl_watchdog_start(void)
+{
+	void *base = (void *)CONFIG_SPL_SUNXI_EARLY_WATCHDOG_BASE;
+	u32 val;
+
+	/* reset the whole system rather than raising an interrupt */
+	val = readl(base + SUNXI_SPL_WDT_CFG);
+	val = (val & ~0x3) | 0x1;
+	writel(val, base + SUNXI_SPL_WDT_CFG);
+
+	/* longest interval the block offers, and enable */
+	val = readl(base + SUNXI_SPL_WDT_MODE);
+	val &= ~(0xf << 4);
+	val |= SUNXI_SPL_WDT_TIMEOUT_16S << 4;
+	val |= SUNXI_SPL_WDT_MODE_EN;
+	writel(val, base + SUNXI_SPL_WDT_MODE);
+
+	writel(SUNXI_SPL_WDT_CTRL_RELOAD, base + SUNXI_SPL_WDT_CTRL);
+}
+#endif
+
 void sunxi_board_init(void)
 {
 	int power_failed = 0;
+
+#ifdef CONFIG_SPL_SUNXI_EARLY_WATCHDOG
+	sunxi_spl_watchdog_start();
+#endif
 
 	if (CONFIG_IS_ENABLED(SUNXI_LED_STATUS))
 		status_led_init();

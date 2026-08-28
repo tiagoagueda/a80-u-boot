@@ -893,6 +893,33 @@ config SYS_BOARD
 config SYS_SOC
 	default "sunxi"
 
+config SPL_SUNXI_EARLY_WATCHDOG
+	bool "Arm a watchdog in SPL"
+	depends on SPL
+	help
+	  Arm the watchdog as the first thing SPL does, before DRAM init, so a
+	  hang in SPL itself resets the board.
+
+	  Every other recovery mechanism - the watchdog under Linux, a
+	  bootloader fallback entry, a rescue card - assumes the SoC reached
+	  U-Boot proper. A board that hangs in SPL is dead until somebody
+	  power-cycles it, which is a problem on any board with no remote power
+	  control.
+
+	  There is no driver model in SPL on these SoCs, so this open-codes the
+	  register sequence from drivers/watchdog/sunxi_wdt.c. U-Boot proper
+	  then adopts the same instance through the WDT uclass, and Linux stops
+	  it in sunxi_wdt_probe(), so nothing else is needed to hand it over.
+
+config SPL_SUNXI_EARLY_WATCHDOG_BASE
+	hex "Base address of the watchdog SPL arms"
+	depends on SPL_SUNXI_EARLY_WATCHDOG
+	default 0x08001000
+	help
+	  Which watchdog instance to arm. The default is the one in the
+	  always-on R/CPUS domain, which is clocked from the 24 MHz oscillator
+	  and needs no gate or reset released before use.
+
 config SUNXI_MINIMUM_DRAM_MB
 	int "minimum DRAM size"
 	default 32 if MACH_SUNIV
