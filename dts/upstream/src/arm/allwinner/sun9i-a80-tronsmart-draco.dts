@@ -37,6 +37,7 @@
 	compatible = "tronsmart,draco-aw80", "allwinner,sun9i-a80";
 
 	aliases {
+		ethernet0 = &gmac;
 		serial0 = &uart0;
 	};
 
@@ -232,46 +233,29 @@
 &gmac {
 	pinctrl-names = "default";
 	pinctrl-0 = <&gmac_rgmii_pins>;
-	/* DIAGNOSTIC: no phy-handle - let stmmac scan all 32 MDIO addresses */
-	/*
-	 * phylink rejects rgmii-id on this MAC:
-	 *   validation of rgmii-id with support ...00006280 failed: -EINVAL
-	 *   cannot attach to PHY (error: -EINVAL)
-	 * Plain rgmii is accepted.
-	 */
 	phy-mode = "rgmii-id";
 	phy-supply = <&reg_cldo1>;
+	phy-handle = <&phy0>;
 	/*
 	 * Force the MDIO clock divider.  bus-gmac runs at 240 MHz and stmmac
 	 * picks the CSR range from it; the default lands on div 42, giving
 	 * MDC = 240/42 = 5.7 MHz.  The MDIO spec caps MDC at 2.5 MHz, so no
-	 * PHY answers - which is what "no phy found" with all-zero reads on a
-	 * full 32-address scan looks like.
-	 *
-	 * clk_csr = 4 selects the 150-250 MHz range, div 102:
-	 *   240 MHz / 102 = 2.35 MHz  (in spec)
+	 * PHY answers.  clk_csr = 4 selects the 150-250 MHz range, div 102:
+	 * 240 / 102 = 2.35 MHz, in spec.  U-Boot's designware driver hardcodes
+	 * that same range (MII_CLKRANGE_150_250M), so it needs no equivalent.
 	 */
 	snps,clk-csr = <4>;
 	status = "okay";
-
-	/*
-	 * MDIO never finds the PHY on this board: the bus is electrically
-	 * healthy (all reads 0xffff, zero timeouts, verified by direct
-	 * register access) but the RTL8211E does not answer.  It is clearly
-	 * alive though - the link LEDs negotiate with the switch unaided.
-	 *
-	 * fixed-link tells the MAC to assume a 1 Gbit full-duplex link and
-	 * skip PHY discovery entirely, which is exactly the situation this
-	 * binding exists for.
-	 */
-	fixed-link {
-		speed = <1000>;
-		full-duplex;
-	};
 };
 
 &mdio {
-	/* DIAGNOSTIC: no PHY declared - forcing a full bus scan */
+	/*
+	 * RTL8211E at address 0, ID 001cc915 - confirmed by direct MDIO reads
+	 * once the vcc-pa bank (aldo3, 2500 mV) was powered correctly.
+	 */
+	phy0: ethernet-phy@0 {
+		reg = <0>;
+	};
 };
 
 &pio {

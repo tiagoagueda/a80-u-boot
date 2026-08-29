@@ -30,6 +30,8 @@ static const struct ccu_clk_gate a80_gates[] = {
 	[CLK_BUS_SPI2]		= GATE(0x580, BIT(22)),
 	[CLK_BUS_SPI3]		= GATE(0x580, BIT(23)),
 
+	[CLK_BUS_GMAC]		= GATE(0x584, BIT(17)),
+
 	[CLK_BUS_PIO]           = GATE(0x590, BIT(5)),
 
 	[CLK_BUS_I2C0]		= GATE(0x594, BIT(0)),
@@ -53,6 +55,8 @@ static const struct ccu_reset a80_resets[] = {
 	[RST_BUS_SPI1]		= RESET(0x5a0, BIT(21)),
 	[RST_BUS_SPI2]		= RESET(0x5a0, BIT(22)),
 	[RST_BUS_SPI3]		= RESET(0x5a0, BIT(23)),
+
+	[RST_BUS_GMAC]		= RESET(0x5a4, BIT(17)),
 
 	[RST_BUS_I2C0]		= RESET(0x5b4, BIT(0)),
 	[RST_BUS_I2C1]		= RESET(0x5b4, BIT(1)),
