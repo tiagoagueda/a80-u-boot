@@ -8,10 +8,14 @@ CONFIG_MACH_SUN9I=y
 CONFIG_DRAM_ZQ=3881915
 CONFIG_SPL_SUNXI_EARLY_WATCHDOG=y
 CONFIG_MMC_SUNXI_SLOT_EXTRA=2
+CONFIG_SYS_MEMTEST_START=0x20000000
+CONFIG_SYS_MEMTEST_END=0xf0000000
 CONFIG_BOOT_RETRY=y
 CONFIG_BOOT_RETRY_TIME=60
 CONFIG_RETRY_BOOTCMD=y
 CONFIG_BOOTCOMMAND="setenv kernel_addr_r 0x22000000; setenv fdt_addr_r 0x23000000; setenv ramdisk_addr_r 0x25000000; setenv scriptaddr 0x24000000; if sysboot mmc 0:1 any 0x24000000 /boot/extlinux/extlinux.conf; then echo; fi; if sysboot mmc 1:1 any 0x24000000 /boot/extlinux/extlinux.conf; then echo; fi; echo no extlinux found - falling back to fixed images; if ext4load mmc 0:1 0x22000000 /boot/uImage; then ext4load mmc 0:1 0x23000000 /boot/sun9i-a80-tronsmart-draco.dtb; setenv bootargs console=ttyS0,115200n8 earlycon rootfstype=ext4 rootwait rw root=/dev/mmcblk0p1; else ext4load mmc 1:1 0x22000000 /boot/uImage; ext4load mmc 1:1 0x23000000 /boot/sun9i-a80-tronsmart-draco.dtb; setenv bootargs console=ttyS0,115200n8 earlycon rootfstype=ext4 rootwait rw root=/dev/mmcblk1p1; fi; bootm 0x22000000 - 0x23000000"
+CONFIG_CMD_MEMTEST=y
+CONFIG_SYS_ALT_MEMTEST=y
 CONFIG_CMD_WDT=y
 # CONFIG_ENV_IS_IN_FAT is not set
 CONFIG_ENV_IS_IN_MMC=y
