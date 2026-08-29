@@ -116,6 +116,8 @@ extern const struct ccu_desc a31_r_ccu_desc;
 extern const struct ccu_desc a64_ccu_desc;
 extern const struct ccu_desc a80_ccu_desc;
 extern const struct ccu_desc a80_mmc_clk_desc;
+extern const struct ccu_desc a80_apbs_gates_desc;
+extern const struct ccu_desc a80_apbs_rst_desc;
 extern const struct ccu_desc a83t_ccu_desc;
 extern const struct ccu_desc d1_ccu_desc;
 extern const struct ccu_desc f1c100s_ccu_desc;
@@ -185,6 +187,11 @@ static const struct udevice_id sunxi_clk_ids[] = {
 	  .data = (ulong)&a80_ccu_desc },
 	{ .compatible = "allwinner,sun9i-a80-mmc-config-clk",
 	  .data = (ulong)&a80_mmc_clk_desc },
+	/* CPUS-domain gates and resets; the PMIC's RSB lives behind these */
+	{ .compatible = "allwinner,sun9i-a80-apbs-gates-clk",
+	  .data = (ulong)&a80_apbs_gates_desc },
+	{ .compatible = "allwinner,sun6i-a31-clock-reset",
+	  .data = (ulong)&a80_apbs_rst_desc },
 #endif
 #ifdef CONFIG_CLK_SUN50I_A64
 	{ .compatible = "allwinner,sun50i-a64-ccu",
