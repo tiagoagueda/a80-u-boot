@@ -10,3 +10,5 @@ CONFIG_USE_BOOTCOMMAND=y
 CONFIG_BOOTCOMMAND="if ext4load mmc 0:1 0x22000000 /boot/uImage; then ext4load mmc 0:1 0x23000000 /boot/sun9i-a80-tronsmart-draco.dtb; setenv bootargs console=ttyS0,115200n8 earlycon rootfstype=ext4 rootwait rw root=/dev/mmcblk0p1; else ext4load mmc 1:1 0x22000000 /boot/uImage; ext4load mmc 1:1 0x23000000 /boot/sun9i-a80-tronsmart-draco.dtb; setenv bootargs console=ttyS0,115200n8 earlycon rootfstype=ext4 rootwait rw root=/dev/mmcblk1p1; fi; bootm 0x22000000 - 0x23000000"
 CONFIG_ETH_DESIGNWARE=y
 CONFIG_PHY_REALTEK=y
+CONFIG_SUN7I_GMAC=y
+CONFIG_RGMII=y

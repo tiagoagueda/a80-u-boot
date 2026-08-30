@@ -8,6 +8,19 @@
 #ifndef _SUNXI_CLOCK_SUN9I_H
 #define _SUNXI_CLOCK_SUN9I_H
 
+/*
+ * GMAC transmit clock control. The block is the A20's - the device tree
+ * gives it "allwinner,sun7i-a20-gmac-clk" - so the fields match
+ * clock_sun4i.h exactly; only the register address differs.
+ */
+#define CCM_GMAC_CTRL_TX_CLK_SRC_MII		0x0
+#define CCM_GMAC_CTRL_TX_CLK_SRC_EXT_RGMII	0x1
+#define CCM_GMAC_CTRL_TX_CLK_SRC_INT_RGMII	0x2
+#define CCM_GMAC_CTRL_GPIT_MII			(0x0 << 2)
+#define CCM_GMAC_CTRL_GPIT_RGMII		(0x1 << 2)
+#define CCM_GMAC_CTRL_RX_CLK_DELAY(x)		((x) << 5)
+#define CCM_GMAC_CTRL_TX_CLK_DELAY(x)		((x) << 10)
+
 #ifndef __ASSEMBLY__
 #include <linux/bitops.h>
 #endif
@@ -225,6 +238,19 @@ struct sunxi_ccm_reg {
 #define APB1_RESET_UART_MASK		(0xff << APB1_RESET_UART_SHIFT)
 #define APB1_RESET_TWI_SHIFT		0
 #define APB1_RESET_TWI_MASK		(0xf << APB1_RESET_TWI_SHIFT)
+
+/*
+ * GMAC transmit clock control. The block is the A20's - the device tree
+ * gives it "allwinner,sun7i-a20-gmac-clk" - so the fields match
+ * clock_sun4i.h exactly; only the register address differs.
+ */
+#define CCM_GMAC_CTRL_TX_CLK_SRC_MII		0x0
+#define CCM_GMAC_CTRL_TX_CLK_SRC_EXT_RGMII	0x1
+#define CCM_GMAC_CTRL_TX_CLK_SRC_INT_RGMII	0x2
+#define CCM_GMAC_CTRL_GPIT_MII			(0x0 << 2)
+#define CCM_GMAC_CTRL_GPIT_RGMII		(0x1 << 2)
+#define CCM_GMAC_CTRL_RX_CLK_DELAY(x)		((x) << 5)
+#define CCM_GMAC_CTRL_TX_CLK_DELAY(x)		((x) << 10)
 
 #ifndef __ASSEMBLY__
 void clock_set_pll1(unsigned int clk);

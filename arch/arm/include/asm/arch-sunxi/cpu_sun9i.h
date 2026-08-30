@@ -21,6 +21,10 @@
 /* AHB0 Module */
 #define SUNXI_NFC_BASE			(REGS_AHB0_BASE + 0x3000)
 
+/* GMAC transmit clock control; the CCU has an unrelated register at the
+ * A20's offset, so sun9i keeps this one in the AHB1 region instead. */
+#define SUNXI_GMAC_TX_CLK_CFG		(REGS_AHB1_BASE + 0x30)
+
 #define SUNXI_GTBUS_BASE		(REGS_AHB0_BASE + 0x9000)
 /* SID address space starts at 0x01ce000, but e-fuse is at offset 0x200 */
 #define SUNXI_SID_BASE			(REGS_AHB0_BASE + 0xe200)
